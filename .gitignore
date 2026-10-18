@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.sqlite3
+
+backend/media/
+backend/staticfiles/
+
+node_modules/
+smart-contract/artifacts/
+smart-contract/cache/
+
+.vscode/
+.idea/
