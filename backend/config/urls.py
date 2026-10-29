@@ -38,4 +38,6 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", home, name="home"),
     path("api/auth/", include("accounts.urls")),
+    path("api/schools/", include("schools.urls")),
+    path("api/students/", include("students.urls")),
 ]

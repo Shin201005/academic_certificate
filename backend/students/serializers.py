@@ -1,9 +1,14 @@
 from rest_framework import serializers
 
 from .models import Student
+from schools.models import School
 
 
 class StudentSerializer(serializers.ModelSerializer):
+    school = serializers.PrimaryKeyRelatedField(
+        queryset=School.objects.all(),
+        required=False
+    )
 
     class Meta:
         model = Student
@@ -18,51 +23,73 @@ class StudentSerializer(serializers.ModelSerializer):
             "email",
         ]
 
-        read_only_fields = [
-            "id",
-        ]
+        read_only_fields = ["id"]
+
+        extra_kwargs = {
+            "school": {"required": False},
+        }
+        validators = []
 
     def validate(self, attrs):
         request = self.context.get("request")
 
-        if request is None:
-            return attrs
-
-        current_user = request.user
-
-        if not current_user.is_authenticated:
+        if request is None or not request.user.is_authenticated:
             raise serializers.ValidationError(
                 "Ban chua dang nhap."
             )
 
+        current_user = request.user
+
+        if current_user.role not in ("ADMIN", "SCHOOL"):
+            raise serializers.ValidationError(
+                "Ban khong co quyen quan ly sinh vien."
+            )
+
+        school = attrs.get("school")
+
+        # SCHOOL chi duoc quan ly sinh vien cua truong minh
         if current_user.role == "SCHOOL":
+
             if current_user.school_id is None:
                 raise serializers.ValidationError(
                     "Tai khoan chua duoc gan truong."
                 )
 
-            school = attrs.get("school")
+            if (
+                school is not None
+                and school.id != current_user.school_id
+            ):
+                raise serializers.ValidationError({
+                    "school": "Khong duoc chon truong khac."
+                })
 
-            if school is not None:
-                if school.id != current_user.school_id:
-                    raise serializers.ValidationError({
-                        "school": (
-                            "Khong duoc gan sinh vien "
-                            "vao truong khac."
-                        )
-                    })
+            if (
+                self.instance is not None
+                and self.instance.school_id != current_user.school_id
+            ):
+                raise serializers.ValidationError(
+                    "Khong duoc sua sinh vien truong khac."
+                )
+
+            school = School.objects.get(
+                pk=current_user.school_id
+            )
+
+        # ADMIN phai chon truong khi tao sinh vien
+        elif school is None:
 
             if self.instance is not None:
-                if self.instance.school_id != current_user.school_id:
-                    raise serializers.ValidationError(
-                        "Khong duoc sua sinh vien truong khac."
-                    )
+                school = self.instance.school
+            else:
+                raise serializers.ValidationError({
+                    "school": "Bat buoc chon truong."
+                })
 
-        school = attrs.get("school")
+        # SCHOOL khong duoc doi truong so huu
+        if current_user.role == "SCHOOL":
+            attrs["school"] = school
 
-        if school is None and self.instance is not None:
-            school = self.instance.school
-
+        # Kiem tra ma sinh vien
         student_code = attrs.get("student_code")
 
         if student_code is None and self.instance is not None:
@@ -88,20 +115,27 @@ class StudentSerializer(serializers.ModelSerializer):
                     )
                 })
 
+        # Kiem tra tai khoan lien ket
         linked_user = attrs.get("user")
 
-        if linked_user is None and self.instance is not None:
+        if "user" not in attrs and self.instance is not None:
             linked_user = self.instance.user
 
         if linked_user is not None:
+
             if linked_user.role != "STUDENT":
                 raise serializers.ValidationError({
-                    "user": "Tai khoan lien ket phai co vai tro STUDENT."
+                    "user": (
+                        "Tai khoan phai co vai tro STUDENT."
+                    )
                 })
 
-            if school is not None and linked_user.school_id != school.id:
+            if linked_user.school_id != school.id:
                 raise serializers.ValidationError({
-                    "user": "Tai khoan khong thuoc truong cua sinh vien."
+                    "user": (
+                        "Tai khoan khong thuoc truong "
+                        "cua sinh vien."
+                    )
                 })
 
         return attrs
